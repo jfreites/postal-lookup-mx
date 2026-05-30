@@ -1,4 +1,4 @@
-# Sepomex API
+# Postal Lookup MX API
 
 A REST API for importing and looking up Mexican postal codes (Códigos Postales) from the SEPOMEX database.
 
@@ -17,14 +17,44 @@ This API allows you to import SEPOMEX data files and query them by zipcode, city
 pnpm install
 ```
 
+## Configuration
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `3000` |
+| `API_KEY` | Authentication key for API requests | `dev-api-key-12345` |
+| `NODE_ENV` | Environment (`development`/`production`) | `development` |
+| `RATE_LIMIT_WINDOW_MS` | Rate limit window in milliseconds | `60000` |
+| `RATE_LIMIT_LOOKUP_MAX` | Max lookup requests per window | `100` |
+| `RATE_LIMIT_IMPORT_MAX` | Max import requests per window | `5` |
+
 ## Running the Server
 
 ```bash
 pnpm start        # Production
-pnpm dev # Development (with auto-reload)
+pnpm dev          # Development (with auto-reload)
 ```
 
-The server runs on port3000 by default.
+The server runs on port 3000 by default.
+
+## Authentication
+
+All `/api/sepomex/*` endpoints require authentication via the `x-api-key` header:
+
+```bash
+curl -H "x-api-key: your-api-key" "http://localhost:3000/api/sepomex/lookup?zipcode=01000"
+```
+
+Requests without a valid API key receive a `401` response:
+```json
+{"success":false,"error":"Invalid or missing API key"}
+```
 
 ## API Endpoints
 
@@ -36,9 +66,12 @@ Import a SEPOMEX data file. The file should be a `.txt` or `.csv` with pipe-deli
 ```
 POST /api/sepomex/import
 Content-Type: multipart/form-data
+x-api-key: <your-api-key>
 
 file: <CPdescarga.txt>
 ```
+
+**Rate Limit:** 5 requests per minute
 
 **Response:**
 ```json
@@ -60,6 +93,13 @@ GET /api/sepomex/lookup?zipcode=76148
 GET /api/sepomex/lookup?city=Santiago de Querétaro&state=Querétaro
 GET /api/sepomex/lookup?zipcode=76148&group=true
 ```
+
+**Headers:**
+```
+x-api-key: <your-api-key>
+```
+
+**Rate Limit:** 100 requests per minute
 
 **Query Parameters:**
 
@@ -104,7 +144,7 @@ GET /api/sepomex/lookup?zipcode=76148&group=true
 
 ### GET /health
 
-Health check endpoint.
+Health check endpoint (no authentication required).
 
 **Response:**
 ```json
@@ -119,9 +159,17 @@ The SEPOMEX file maps to the following database schema:
 |-----------|----------------|-------------|
 | d_codigo | zipcode | Postal code |
 | d_asenta | neighborhood | Settlement/Colony name |
-| D_mnpio | municipality | Municipality |
+| d_mnpio | municipality | Municipality |
 | d_ciudad | city | City |
 | d_estado | state | State |
+
+## Security Features
+
+- **API Key Authentication**: All API endpoints require `x-api-key` header
+- **Rate Limiting**: Configurable per-endpoint limits to prevent abuse
+- **Helmet**: Security headers enabled by default
+- **Input Sanitization**: Parameterized queries prevent SQL injection
+- **Error Sanitization**: Stack traces hidden in production
 
 ## Project Structure
 
@@ -129,7 +177,7 @@ The SEPOMEX file maps to the following database schema:
 /src
   /controllers    - Request handlers
   /db             - SQLite database configuration
-  /middlewares    - Request validation
+  /middlewares    - Request validation & auth
   /routes         - API route definitions
   /services       - Business logic
   /utils          - Helper functions
