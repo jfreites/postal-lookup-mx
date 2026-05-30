@@ -1,9 +1,14 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const sepomexRoutes = require('./routes/sepomexRoutes');
 
 const app = express();
 
+app.disable('x-powered-by');
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -19,7 +24,12 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  res.status(500).json({ success: false, error: 'Internal server error' });
+  const status = err.status || 500;
+  const message = process.env.NODE_ENV === 'production' && status === 500
+    ? 'Internal server error'
+    : err.message || 'Internal server error';
+
+  res.status(status).json({ success: false, error: message });
 });
 
 module.exports = app;
