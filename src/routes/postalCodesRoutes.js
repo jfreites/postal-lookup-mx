@@ -12,14 +12,6 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }
 });
 
-const lookupLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
-  max: parseInt(process.env.RATE_LIMIT_LOOKUP_MAX) || 100,
-  message: { success: false, error: 'Too many requests. Please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false
-});
-
 const importLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
   max: parseInt(process.env.RATE_LIMIT_IMPORT_MAX) || 5,
@@ -29,6 +21,7 @@ const importLimiter = rateLimit({
 });
 
 router.post('/import', validateApiKey, importLimiter, upload.single('file'), validateFileExtension, sepomexController.import);
-router.get('/lookup', validateApiKey, lookupLimiter, sepomexController.lookup);
+router.get('/postal-codes/:zipcode', validateApiKey, sepomexController.getByZipcode);
+router.get('/postal-codes/:zipcode/grouped', validateApiKey, sepomexController.getByZipcodeGrouped);
 
 module.exports = router;

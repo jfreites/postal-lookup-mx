@@ -3,7 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const sepomexRoutes = require('./routes/sepomexRoutes');
+const postalCodesRoutes = require('./routes/postalCodesRoutes');
+const statesRoutes = require('./routes/statesRoutes');
 
 const app = express();
 
@@ -13,7 +14,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use('/api/sepomex', sepomexRoutes);
+app.use('/api', postalCodesRoutes);
+app.use('/api', statesRoutes);
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });

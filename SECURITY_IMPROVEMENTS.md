@@ -2,14 +2,13 @@
 
 ## Priority 1: Input Validation & Rate Limiting
 - [x] Install `express-rate-limit`
-- [x] Configure rate limit for `/api/sepomex/lookup` (100 requests/minute per IP)
-- [x] Configure rate limit for `/api/sepomex/import` (5 requests/minute per IP)
+- [x] Configure rate limit for `/api/import` (5 requests/minute per IP)
 - [x] Test rate limits
 
 ## Priority 2: Authentication - API Key
 - [x] Add `x-api-key` header validation middleware
 - [x] Store API key in environment variable
-- [x] Apply to all `/api/sepomex/*` routes
+- [x] Apply to all `/api/*` routes
 - [x] Return 401 for missing/invalid key
 - [x] Test authentication
 
