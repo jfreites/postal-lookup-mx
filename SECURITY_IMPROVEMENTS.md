@@ -29,5 +29,5 @@
 - [ ] Document virus scanning recommendation
 
 ## Priority 7: Monitoring
-- [ ] Add request logging (Morgan)
-- [ ] Add structured error logging
+- [x] Add request logging (Morgan)
+- [x] Add structured error logging

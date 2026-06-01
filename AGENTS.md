@@ -11,7 +11,7 @@ A REST API for importing and looking up Mexican postal codes (Códigos Postales)
 - **Database**: SQLite (via better-sqlite3)
 - **Package Manager**: pnpm
 - **File Upload**: Multer (memory storage)
-- **Security**: Helmet, express-rate-limit, API key auth
+- **Security**: Helmet, express-rate-limit, API key auth, Morgan, Winston
 
 ## Project Structure
 
@@ -112,6 +112,7 @@ CREATE TABLE sepomex (
 | `src/routes/postalCodesRoutes.js` | Rate limiter + postal codes routes |
 | `src/routes/statesRoutes.js` | States and cities routes |
 | `src/utils/normalize.js` | City name normalization function |
+| `src/utils/logger.js` | Winston logger for structured error/request logging |
 
 ## Data Flow
 
@@ -164,6 +165,7 @@ normalizeCity("Ciudad Juárez")          // → "ciudad-juarez"
 - **Rate Limiting**: Import limited to 5/min (express-rate-limit)
 - **Helmet**: Security headers (XSS protection, content-type sniffing, etc.)
 - **Error Sanitization**: Stack traces hidden in production mode
+- **Request Logging**: Morgan HTTP logging → Winston structured logs
 - **SQL Injection Prevention**: Parameterized queries throughout
 
 ## Configuration
@@ -177,6 +179,7 @@ Environment variables (see `.env.example`):
 | `NODE_ENV` | development | Environment mode |
 | `RATE_LIMIT_WINDOW_MS` | 60000 | Rate limit window (1 min) |
 | `RATE_LIMIT_IMPORT_MAX` | 5 | Max import requests per window |
+| `LOG_LEVEL` | info | Logging level (info, warn, error) |
 
 ## Important Notes
 

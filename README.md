@@ -32,6 +32,7 @@ cp .env.example .env
 | `NODE_ENV` | Environment (`development`/`production`) | `development` |
 | `RATE_LIMIT_WINDOW_MS` | Rate limit window in milliseconds | `60000` |
 | `RATE_LIMIT_IMPORT_MAX` | Max import requests per window | `5` |
+| `LOG_LEVEL` | Logging level (`info`/`warn`/`error`) | `info` |
 
 ## Running the Server
 
@@ -257,6 +258,7 @@ The SEPOMEX file maps to the following database schema:
 - **Helmet**: Security headers enabled by default
 - **Input Sanitization**: Parameterized queries prevent SQL injection
 - **Error Sanitization**: Stack traces hidden in production
+- **Monitoring**: Morgan (request logging) + Winston (structured error logging)
 
 ## Project Structure
 
@@ -267,7 +269,7 @@ The SEPOMEX file maps to the following database schema:
   /middlewares    - Request validation & auth
   /routes         - API route definitions
   /services       - Business logic
-  /utils          - Helper functions
+  /utils          - Helper functions (logger.js, normalize.js)
   app.js          - Express configuration
   server.js       - Entry point
 /uploads         - Uploaded files storage
