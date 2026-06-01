@@ -6,7 +6,7 @@ const sepomexService = require('../services/sepomexService');
 const uploadDir = path.join(__dirname, '../../uploads');
 
 const sepomexController = {
-  import: (req, res) => {
+  import: async (req, res) => {
     try {
       const file = req.file;
       const uniqueFilename = generateUniqueFilename(file.originalname);
@@ -14,7 +14,7 @@ const sepomexController = {
 
       fs.writeFileSync(destination, file.buffer);
 
-      const totalRecords = sepomexService.importFromFile(file.buffer);
+      const totalRecords = await sepomexService.importFromFile(file.buffer);
 
       res.status(201).json({
         success: true,
@@ -27,40 +27,40 @@ const sepomexController = {
     }
   },
 
-  getByZipcode: (req, res) => {
+  getByZipcode: async (req, res) => {
     try {
       const { zipcode } = req.params;
-      const results = sepomexService.getByZipcode(zipcode);
+      const results = await sepomexService.getByZipcode(zipcode);
       res.status(200).json({ success: true, data: results });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
     }
   },
 
-  getByZipcodeGrouped: (req, res) => {
+  getByZipcodeGrouped: async (req, res) => {
     try {
       const { zipcode } = req.params;
-      const results = sepomexService.getByZipcodeGrouped(zipcode);
+      const results = await sepomexService.getByZipcodeGrouped(zipcode);
       res.status(200).json({ success: true, data: results });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
     }
   },
 
-  getCitiesByState: (req, res) => {
+  getCitiesByState: async (req, res) => {
     try {
       const { stateIso } = req.params;
-      const cities = sepomexService.getCitiesByState(stateIso);
+      const cities = await sepomexService.getCitiesByState(stateIso);
       res.status(200).json({ success: true, data: cities });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
     }
   },
 
-  getPostalCodesByStateAndCity: (req, res) => {
+  getPostalCodesByStateAndCity: async (req, res) => {
     try {
       const { stateIso, normalizedCity } = req.params;
-      const result = sepomexService.getPostalCodesByStateAndCity(stateIso, normalizedCity);
+      const result = await sepomexService.getPostalCodesByStateAndCity(stateIso, normalizedCity);
       res.status(200).json({
         success: true,
         state: stateIso.toUpperCase(),
