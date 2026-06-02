@@ -1,4 +1,4 @@
-const db = require('../db/database');
+const { supabase, supabaseAdmin } = require('../db/supabase');
 const { normalizeCity } = require('../utils/normalize');
 
 const FIELD_MAP = {
@@ -12,7 +12,7 @@ const FIELD_MAP = {
 const BATCH_SIZE = 1000;
 
 const sepomexService = {
-  importFromFile: (fileBuffer) => {
+  importFromFile: async (fileBuffer) => {
     const content = fileBuffer.toString('latin1');
     const lines = content.split('\n');
 
@@ -30,32 +30,23 @@ const sepomexService = {
       }
     }
 
-    const stateMap = db.prepare('SELECT state_name, state_iso_code FROM state_mapping').all()
-      .reduce((acc, { state_name, state_iso_code }) => {
-        acc[state_name.toLowerCase()] = state_iso_code;
-        return acc;
-      }, {});
+    const { data: stateData, error: stateError } = await supabase
+      .from('state_mapping')
+      .select('state_name, state_iso_code');
 
-    db.exec('DELETE FROM sepomex');
+    if (stateError) throw stateError;
 
-    const insertStmt = db.prepare(`
-      INSERT INTO sepomex (zipcode, neighborhood, municipality, city, state, state_iso_code, normalized_city)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    const stateMap = stateData.reduce((acc, { state_name, state_iso_code }) => {
+      acc[state_name.toLowerCase()] = state_iso_code;
+      return acc;
+    }, {});
 
-    const insertMany = db.transaction((records) => {
-      for (const record of records) {
-        insertStmt.run(
-          record.zipcode,
-          record.neighborhood,
-          record.municipality,
-          record.city,
-          record.state,
-          record.state_iso_code,
-          record.normalized_city
-        );
-      }
-    });
+    const { error: deleteError } = await supabase
+      .from('sepomex')
+      .delete()
+      .neq('id', 0);
+
+    if (deleteError) throw deleteError;
 
     const batch = [];
     let totalInserted = 0;
@@ -81,42 +72,55 @@ const sepomexService = {
       batch.push(record);
 
       if (batch.length >= BATCH_SIZE) {
-        insertMany(batch);
+        const { error: insertError } = await supabase
+          .from('sepomex')
+          .insert(batch);
+
+        if (insertError) throw insertError;
+
         totalInserted += batch.length;
         batch.length = 0;
       }
     }
 
     if (batch.length > 0) {
-      insertMany(batch);
+      const { error: insertError } = await supabase
+        .from('sepomex')
+        .insert(batch);
+
+      if (insertError) throw insertError;
+
       totalInserted += batch.length;
     }
 
     return totalInserted;
   },
 
-  getByZipcode: (zipcode) => {
-    const stmt = db.prepare(`
-      SELECT zipcode, neighborhood, municipality, city, state, state_iso_code
-      FROM sepomex
-      WHERE zipcode = ?
-      ORDER BY neighborhood
-      LIMIT 1000
-    `);
-    return stmt.all(zipcode);
+  getByZipcode: async (zipcode) => {
+    const { data, error } = await supabase
+      .from('sepomex')
+      .select('zipcode, neighborhood, municipality, city, state, state_iso_code')
+      .eq('zipcode', zipcode)
+      .order('neighborhood')
+      .limit(1000);
+
+    if (error) throw error;
+    return data || [];
   },
 
-  getByZipcodeGrouped: (zipcode) => {
-    const stmt = db.prepare(`
-      SELECT zipcode, neighborhood, municipality, city, state, state_iso_code
-      FROM sepomex
-      WHERE zipcode = ?
-      ORDER BY city, municipality, neighborhood
-    `);
-    const results = stmt.all(zipcode);
+  getByZipcodeGrouped: async (zipcode) => {
+    const { data, error } = await supabase
+      .from('sepomex')
+      .select('zipcode, neighborhood, municipality, city, state, state_iso_code')
+      .eq('zipcode', zipcode)
+      .order('city')
+      .order('municipality')
+      .order('neighborhood');
+
+    if (error) throw error;
 
     const grouped = {};
-    for (const row of results) {
+    for (const row of (data || [])) {
       const key = `${row.zipcode}|${row.city}|${row.state}|${row.municipality}|${row.state_iso_code}`;
       if (!grouped[key]) {
         grouped[key] = {
@@ -133,36 +137,44 @@ const sepomexService = {
     return Object.values(grouped);
   },
 
-  getCitiesByState: (stateIso) => {
+  getCitiesByState: async (stateIso) => {
     const stateIsoUpper = stateIso.toUpperCase();
-    const stmt = db.prepare(`
-      SELECT DISTINCT city
-      FROM sepomex
-      WHERE state_iso_code = ?
-      ORDER BY city
-    `);
-    return stmt.all(stateIsoUpper).map(row => row.city);
+    const { data, error } = await supabase
+      .from('sepomex')
+      .select('city')
+      .eq('state_iso_code', stateIsoUpper)
+      .order('city');
+
+    if (error) throw error;
+    return (data || []).map(row => row.city);
   },
 
-  getPostalCodesByStateAndCity: (stateIso, normalizedCity) => {
+  getPostalCodesByStateAndCity: async (stateIso, normalizedCity) => {
     const stateIsoUpper = stateIso.toUpperCase();
 
-    const cityStmt = db.prepare(`
-      SELECT city FROM sepomex WHERE normalized_city = ? AND state_iso_code = ? LIMIT 1
-    `);
-    const cityRow = cityStmt.get(normalizedCity, stateIsoUpper);
-    if (!cityRow) return { city: null, postalCodes: [] };
+    const { data: cityData, error: cityError } = await supabase
+      .from('sepomex')
+      .select('city')
+      .eq('normalized_city', normalizedCity)
+      .eq('state_iso_code', stateIsoUpper)
+      .limit(1)
+      .maybeSingle();
 
-    const stmt = db.prepare(`
-      SELECT zipcode, municipality, neighborhood
-      FROM sepomex
-      WHERE normalized_city = ? AND state_iso_code = ?
-      ORDER BY zipcode, neighborhood
-    `);
-    const results = stmt.all(normalizedCity, stateIsoUpper);
+    if (cityError) throw cityError;
+    if (!cityData) return { city: null, postalCodes: [] };
+
+    const { data, error } = await supabase
+      .from('sepomex')
+      .select('zipcode, municipality, neighborhood')
+      .eq('normalized_city', normalizedCity)
+      .eq('state_iso_code', stateIsoUpper)
+      .order('zipcode')
+      .order('neighborhood');
+
+    if (error) throw error;
 
     const grouped = {};
-    for (const row of results) {
+    for (const row of (data || [])) {
       if (!grouped[row.zipcode]) {
         grouped[row.zipcode] = {
           zipcode: row.zipcode,
@@ -174,7 +186,7 @@ const sepomexService = {
     }
 
     return {
-      city: cityRow.city,
+      city: cityData.city,
       postalCodes: Object.values(grouped)
     };
   }

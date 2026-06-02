@@ -1,15 +1,16 @@
 # Postal Lookup MX API
 
-A REST API for importing and looking up Mexican postal codes (Códigos Postales) from the SEPOMEX database.
+A REST API for importing and looking up Mexican postal codes (Códigos Postales) from the SEPOMEX database. Built with Express.js and Supabase PostgreSQL.
 
 ## Overview
 
-This API allows you to import SEPOMEX data files and query them by zipcode, city, or state. The data is stored in a local SQLite database for fast lookups.
+This API allows you to import SEPOMEX data files and query them by zipcode, city, or state. Data is stored in Supabase PostgreSQL for fast lookups with per-subscriber rate limiting and usage tracking.
 
 ## Requirements
 
 - Node.js 18+
 - pnpm
+- Supabase account (for database)
 
 ## Installation
 
@@ -28,11 +29,24 @@ cp .env.example .env
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Server port | `3000` |
-| `API_KEY` | Authentication key for API requests | `dev-api-key-12345` |
 | `NODE_ENV` | Environment (`development`/`production`) | `development` |
-| `RATE_LIMIT_WINDOW_MS` | Rate limit window in milliseconds | `60000` |
-| `RATE_LIMIT_IMPORT_MAX` | Max import requests per window | `5` |
-| `LOG_LEVEL` | Logging level (`info`/`warn`/`error`) | `info` |
+| `SUPABASE_URL` | Supabase project URL | - |
+| `SUPABASE_ANON_KEY` | Supabase anon key | - |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key | - |
+
+## Database Setup
+
+### Apply Migrations
+
+The database schema is managed via Supabase migrations. The following tables and functions are required:
+
+1. **state_mapping** - Maps state names to ISO codes
+2. **sepomex** - Main postal codes data
+3. **subscribers** - Subscriber accounts with API keys
+4. **api_usage** - Usage tracking for rate limiting
+5. **increment_usage()** - Stored function for atomic usage upsert
+
+See `AGENTS.md` for the complete schema.
 
 ## Running the Server
 
@@ -43,18 +57,63 @@ pnpm dev          # Development (with auto-reload)
 
 The server runs on port 3000 by default.
 
-## Authentication
+## Subscriber Authentication
 
-All API endpoints require authentication via the `x-api-key` header:
+All API endpoints require a subscriber API key via the `x-api-key` header:
 
 ```bash
-curl -H "x-api-key: your-api-key" "http://localhost:3000/api/postal-codes/01000"
+curl -H "x-api-key: pcx_9b13990167b67a70d4e75a8b751072c10aa05cb2a40adb7e" \
+  "http://localhost:3000/api/postal-codes/01000"
 ```
 
-Requests without a valid API key receive a `401` response:
-```json
-{"success":false,"error":"Invalid or missing API key"}
+**Error Responses:**
+
+| Status | Error |
+|--------|-------|
+| 401 | `Missing API key. Include x-api-key header.` |
+| 401 | `Invalid API key` |
+| 403 | `API key is inactive. Contact support.` |
+
+## Rate Limits
+
+Each subscriber has per-minute and per-day rate limits based on their tier:
+
+| Tier | Per Minute | Per Day |
+|------|------------|---------|
+| Free | 30 | 500 |
+| Pro | 100 | 2000 |
+
+Rate limit headers are included in every response:
+
 ```
+X-RateLimit-Limit: 30
+X-RateLimit-Remaining: 29
+X-DailyLimit-Remaining: 499
+```
+
+When exceeded, returns `429` with a `Retry-After` header.
+
+## Managing Subscribers
+
+### Generate API Key
+
+```bash
+node scripts/generate-api-key.js
+```
+
+Output: `pcx_296475ae3f472f95d3817901167e1537e89fb8b81a9b960c`
+
+### Add Subscriber (via Supabase Dashboard)
+
+1. Go to **Supabase → Project → Table Editor → subscribers**
+2. Insert new row with:
+   - `email`: user@example.com
+   - `api_key`: pcx_... (from generate-api-key.js)
+   - `name`: User Name
+   - `tier`: free
+   - `is_active`: true
+   - `rate_limit`: 30
+   - `daily_limit`: 500
 
 ## API Endpoints
 
@@ -66,12 +125,10 @@ Import a SEPOMEX data file. The file should be a `.txt` or `.csv` with pipe-deli
 ```
 POST /api/import
 Content-Type: multipart/form-data
-x-api-key: <your-api-key>
+x-api-key: <subscriber-api-key>
 
 file: <CPdescarga.txt>
 ```
-
-**Rate Limit:** 5 requests per minute
 
 **Response:**
 ```json
@@ -90,7 +147,7 @@ Get all settlements (neighborhoods) for a given zipcode.
 **Request:**
 ```
 GET /api/postal-codes/76148
-x-api-key: <your-api-key>
+x-api-key: <subscriber-api-key>
 ```
 
 **Response:**
@@ -117,7 +174,7 @@ Get settlements grouped by city/municipality for a given zipcode.
 **Request:**
 ```
 GET /api/postal-codes/76148/grouped
-x-api-key: <your-api-key>
+x-api-key: <subscriber-api-key>
 ```
 
 **Response:**
@@ -145,7 +202,7 @@ Get all city names in a given state. The state ISO code is case-insensitive.
 ```
 GET /api/states/QRO/cities
 GET /api/states/qro/cities
-x-api-key: <your-api-key>
+x-api-key: <subscriber-api-key>
 ```
 
 **Response:**
@@ -163,7 +220,7 @@ Get all postal codes and neighborhoods for a specific city in a state.
 **Request:**
 ```
 GET /api/states/QRO/cities/santiago-de-queretaro/postal-codes
-x-api-key: <your-api-key>
+x-api-key: <subscriber-api-key>
 ```
 
 **Response:**
@@ -253,8 +310,8 @@ The SEPOMEX file maps to the following database schema:
 
 ## Security Features
 
-- **API Key Authentication**: All API endpoints require `x-api-key` header
-- **Rate Limiting**: Configurable per-endpoint limits to prevent abuse
+- **Subscriber API Key Authentication**: All API endpoints require `x-api-key` header validated against `subscribers` table
+- **Per-Subscriber Rate Limiting**: Per-minute and per-day limits tracked in `api_usage` table
 - **Helmet**: Security headers enabled by default
 - **Input Sanitization**: Parameterized queries prevent SQL injection
 - **Error Sanitization**: Stack traces hidden in production
@@ -264,22 +321,23 @@ The SEPOMEX file maps to the following database schema:
 
 ```
 /src
-  /controllers    - Request handlers
-  /db             - SQLite database configuration
-  /middlewares    - Request validation & auth
-  /routes         - API route definitions
-  /services       - Business logic
-  /utils          - Helper functions (logger.js, normalize.js)
+  /controllers    - Request handlers (sepomexController.js)
+  /db             - Supabase client config (supabase.js)
+  /middlewares    - Auth & validation (auth.js, rateLimiter.js, validateFileExtension.js)
+  /routes         - API route definitions (postalCodesRoutes.js, statesRoutes.js)
+  /services       - Business logic (sepomexService.js)
+  /utils          - Helper functions (logger.js, normalize.js, fileStorage.js)
   app.js          - Express configuration
   server.js       - Entry point
-/uploads         - Uploaded files storage
-/data            - SQLite database storage
+/scripts          - CLI tools (generate-api-key.js)
+/uploads          - Uploaded files storage
 ```
 
 ## Notes
 
 - Each import replaces all existing data (truncate + insert)
 - File size limit: 50MB
-- Database uses WAL mode for concurrent reads
 - Batch inserts of 1000 records for performance
 - State ISO codes are case-insensitive in endpoints
+- Rate limits are enforced per-subscriber based on their tier settings
+- File encoding: Latin-1 (ISO-8859-1) for Spanish characters
